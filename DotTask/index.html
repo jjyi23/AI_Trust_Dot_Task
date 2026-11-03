@@ -1,0 +1,835 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Dot Task — 2026-10-30</title>
+    <meta name="referrer" content="no-referrer">
+    <script>
+        const entry = new URLSearchParams(window.location.search);
+        window.studyEntry = {
+            consent: entry.get('consent') === 'true',
+            participantId: entry.get('PROLIFIC_PID'),
+            studyId: entry.get('STUDY_ID'),
+            sessionId: entry.get('SESSION_ID')
+        };
+        entry.delete('PROLIFIC_PID');
+        entry.delete('STUDY_ID');
+        entry.delete('SESSION_ID');
+        // Remove recruitment IDs before loading external resources.
+        window.history.replaceState(null, '', window.location.pathname);
+    </script>
+
+    <script src="https://www.gstatic.com/charts/loader.js"></script>
+    <script src="../src/sha1.js"></script>
+    <script src="https://mjaquiery.github.io/jsPsych/jspsych.js"></script>
+    <script src="https://mjaquiery.github.io/jsPsych/plugins/jspsych-instructions.js"></script>
+    <script src="https://mjaquiery.github.io/jsPsych/plugins/jspsych-html-keyboard-response.js"></script>
+    <!--local dev versions of jsPsych-->
+    <!--script src="../jsPsych/jspsych.js"></script>
+    <script src="../jsPsych/plugins/jspsych-instructions.js"></script>
+    <script src="../jsPsych/plugins/jspsych-html-keyboard-response.js"></script>
+    <script src="../jsPsych/plugins/jspsych-canvas-sliders-response.js"></script-->
+    <script src="../src/bowser.min.js"></script>
+    <script src="../src/jspsych-call-function.js"></script>
+    <script src="../src/jspsych-function-sliders-response.js"></script>
+    <script src="../src/jspsych-jas-present-advice-choice.js"></script>
+    <script src="../src/jspsych-canvas-sliders-response.js"></script>
+
+    <link rel="stylesheet" href="../style/advisorChoice.css"/>
+    <link rel="stylesheet" href="https://mjaquiery.github.io/jsPsych/css/jspsych.css"/>
+    <link rel="stylesheet" href="../style/confidenceSliders.css"/>
+    <link rel="stylesheet" href="../style/feedbackStyle.css"/>
+    <link rel="stylesheet" href="../style/debriefForm.css"/>
+    <link rel="preload" href="../assets/image/chatgpt_logo.jpg" as="image">
+    <link rel="preload" href="../assets/image/human_advisor.png" as="image"/>
+</head>
+<body class="jspsych-display-element" tabindex="0" style="margin: 0; height: 100%; width: 100%;">
+    <div class="jspsych-content-wrapper" style="height: 100vh;">
+        <div id="jspsych-content" class="jspsych-content">
+            <h1 id="initHeader">Loading...</h1>
+            <p id="initText">If you continue to see this message after a couple of seconds something has gone wrong. In order to run
+                properly the experiment requires a modern browser with javascript enabled.</p>
+        </div>
+    </div>
+<script type="module">
+    import {DoubleDotGrid, utils} from '../src/exploringSocialMetacognition.js';
+    import {DotTask} from "../src/advisorChoiceDefs.js";
+    import {studyConfig} from "../src/studyConfig.js";
+
+    /*
+     * Provisional 2 x 2 advisor design. Reliability is kept independent of
+     * advisor identity so that an AI-vs-human comparison is not confounded
+     * with advisor accuracy. Change these values here when the final design
+     * is decided.
+     */
+    const advisorProfiles = [
+        {condition: "human-high", type: "human", label: "Human advisor", reliabilityLabel: "high", reliability: 0.9},
+        {condition: "human-low",  type: "human", label: "Human advisor", reliabilityLabel: "low",  reliability: 0.60},
+        {condition: "ai-high", type: "ai", label: "ChatGPT", reliabilityLabel: "high", reliability: 0.9},
+        {condition: "ai-low",  type: "ai", label: "ChatGPT", reliabilityLabel: "low",  reliability: 0.60}
+    ];
+
+    /**
+     * The governor contains the properties which the experiment functions need to access from everywhere.
+     *
+     * The governor serves two key functions: it acts as a master object holding the disparate objects
+     * required to run the experiment (e.g. advisors, trials); and it holds miscellaneous temporary
+     * variables which are required for things such as staircasing.
+     */
+    let gov = new DotTask({
+        experimentCode: 'dotRep',
+        repeatTrials: false,
+        showRepeatDebrief: false,
+        dotCount: 200,
+        dotDifference: 30,
+        difficultyStep: {
+            start: 5,
+            end: 1,
+            nReversals: 2
+        },
+        minimumBlockScore: 0.10,
+        blockCount: 1,
+        blockStructure: [
+            {
+                0: 40 // using 0 because it corresponds to 'catch' trials without advice in AdvisorChoice
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+            {
+                0: 40
+            },
+        ],
+        practiceBlockStructure: [
+            {
+                0: 20
+            },
+            {
+                0: 20
+            }
+        ],
+        preTrialInterval: 200,
+        preStimulusInterval: 500,
+        stimulusDuration: 200,
+        feedbackDuration: 200,
+        completionURL: studyConfig.completionURL
+    });
+
+    // hoist gov to allow functions access
+    window.gov = gov;
+
+    gov.participantId = window.studyEntry.participantId
+        ? sha1.sha1(window.studyEntry.participantId)
+        : sha1.sha1(crypto.randomUUID());
+    gov.studyVersion = studyConfig.version;
+    gov.recruitment = {
+        source: window.studyEntry.participantId ? 'prolific' : 'local-test',
+        studyId: window.studyEntry.studyId,
+        sessionIdHash: window.studyEntry.sessionId ? sha1.sha1(window.studyEntry.sessionId) : null,
+        consentReceived: window.studyEntry.consent
+    };
+    // Keep the participant hash used for matching Qualtrics; discard plain IDs.
+    window.studyEntry.participantId = null;
+    window.studyEntry.sessionId = null;
+    gov.trials = gov.getTrials();
+    gov.trustRatings = [];
+
+    /*
+ * BETWEEN-SUBJECTS CONDITION ASSIGNMENT
+ *
+ * The participant ID is hashed earlier in the file. Using part of that
+ * hash gives each condition a 25% chance while ensuring that refreshing
+ * the experiment does not change a Prolific participant's condition.
+ */
+const conditionNumber =
+    parseInt(gov.participantId.slice(0, 8), 16) %
+    advisorProfiles.length;
+
+const assignedAdvisor = advisorProfiles[conditionNumber];
+const assignedAdvisorImage =
+    assignedAdvisor.type === "ai"
+        ? "../assets/image/chatgpt_logo.jpg"
+        : "../assets/image/human_advisor.png";
+
+/*
+ * Save the participant-level condition in the exported governor data.
+ */
+gov.advisorCondition = assignedAdvisor.condition;
+gov.advisorType = assignedAdvisor.type;
+gov.advisorReliabilityLabel =
+    assignedAdvisor.reliabilityLabel;
+gov.advisorReliability =
+    assignedAdvisor.reliability;
+
+console.log(
+    "Participant advisor condition:",
+    assignedAdvisor.condition
+);
+
+/*
+ * Give one block an exact number of correct and incorrect pieces of
+ * advice, according to the participant's assigned advisor reliability.
+ */
+function assignAdvisorToBlock(blockTrials, profile) {
+    const correctCount = Math.round(
+        blockTrials.length * profile.reliability
+    );
+
+    let accuracyDeck = [];
+
+    for(let i = 0; i < blockTrials.length; i++) {
+        accuracyDeck.push(i < correctCount);
+    }
+
+    accuracyDeck = utils.shuffle(accuracyDeck);
+
+    blockTrials.forEach((trial, index) => {
+        const advisorCorrect = accuracyDeck[index];
+
+        trial.hasAdvisor = true;
+        trial.advisorCondition = profile.condition;
+        trial.advisorType = profile.type;
+        trial.advisorLabel = profile.label;
+        trial.advisorReliabilityLabel =
+            profile.reliabilityLabel;
+        trial.advisorReliability = profile.reliability;
+        trial.advisorCorrect = advisorCorrect;
+
+        trial.advisorAnswer = advisorCorrect
+            ? trial.whichSide
+            : 1 - trial.whichSide;
+    });
+}
+
+/*
+ * Initially mark every trial as having no advisor.
+ * The first practice block will remain this way.
+ */
+gov.trials.forEach(trial => {
+    trial.hasAdvisor = false;
+    trial.advisorCondition = null;
+    trial.advisorType = null;
+    trial.advisorLabel = null;
+    trial.advisorReliabilityLabel = null;
+    trial.advisorReliability = null;
+    trial.advisorCorrect = null;
+    trial.advisorAnswer = null;
+    trial.feedback = false;
+});
+
+/*
+ * Add the participant's assigned advisor to the second practice block
+ * and every real block.
+ */
+const advisedBlockNumbers = [...new Set(
+    gov.trials
+        .filter(trial =>
+            !trial.practice || trial.block === 1
+        )
+        .map(trial => trial.block)
+)];
+
+advisedBlockNumbers.forEach(block => {
+    const blockTrials = gov.trials.filter(
+        trial => trial.block === block
+    );
+
+    assignAdvisorToBlock(
+        blockTrials,
+        assignedAdvisor
+    );
+}); 
+
+    /* create timeline */
+    let timeline = [];
+    let testCanvas =(new DoubleDotGrid(0,0,{dotWidth: 3, dotHeight:3, spacing: 100}));
+    testCanvas.w = testCanvas.displayWidth * 2 + testCanvas.spacing;
+    testCanvas.h = testCanvas.displayHeight;
+
+    /* define welcome message trial */
+    const welcome = {
+        type: 'instructions',
+        pages: [
+            "Welcome to the experiment. Click 'next' to begin.",
+            "<p>You will see two boxes containing dots either side of the centre of the screen. " +
+            "Your task is to use the slider to decide which of the two boxes has the most dots.</p>"+
+            "<p>You make your decision by using the grey bars below the boxes.</p>" +
+            "Click one of the boxes and then press the 'continue' button.</p>" +
+            "<p>To help reduce distractions, we're going to use <strong>fullscreen mode</strong>.</p>" +
+            "<p>Click 'next' to enter fullscreen mode and proceed.</p>"
+        ],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>{
+            gov.fullscreenMode();
+            gov.storeMiscTrialData(trial);
+        }
+    };
+
+    const sliderInstructions = {
+        type: 'instructions',
+        pages: ["<p>You can use the slider to indicate your <strong>confidence</strong> as well. " +
+        "You do this by moving the slider more towards the edges if you are sure, and more towards the " +
+        "middle if you are unsure.</p>" +
+        "<p>E.g. if you were <strong>sure</strong> there were more dots on the <strong>left</strong>, you would move the " +
+        "slider all the way to the <strong>left</strong>.</p>" +
+        "<p>If you thought there were more dots on the <strong>right</strong>, but you were " +
+        "<strong>guessing</strong>, you would move the slider, just to the <strong>right</strong> " +
+        "of the centre.</p>" +
+        "<p>Try using the slider to indicate your confidence now.</p>"],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>gov.storeMiscTrialData(trial)
+    };
+
+    const quickStimInstructions = {
+        type: 'instructions',
+        pages: ["<p>Good.</p>" +
+        "<p>From now on, <strong>the boxes will appear very briefly</strong>, so make sure you are " +
+        "concentrating or you will miss them. " +
+        "The task is difficult at first, but you will get used to it.</p>" +
+        "It helps to keep your eyes fixed where the cross appears in the middle of the screen.</p>" +
+        "<p>To try this, press 'next'.</p>"],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>gov.storeMiscTrialData(trial)
+    };
+
+    const practiceInstructions = {
+        type: 'instructions',
+        pages: ["<p>Good.</p>" +
+        "<p>The main experiment will start after you have had a bit of practice with the task.</p>" +
+        "<p>To begin the practice, press 'next'.</p>"],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>gov.storeMiscTrialData(trial)
+    };
+
+    const advisorCoverStory =
+    assignedAdvisor.type === "ai"
+        ? (
+            "<p>You have been paired with ChatGPT.</p>" +
+
+            "<p>On each trial, the ChatGPT will analyze the " +
+            "same dot display and independently decide which box " +
+            "contained more dots.</p>"
+        )
+        : (
+            "<p>You have been paired with another participant who " +
+            "will serve as your advisor.</p>" +
+
+            "<p>On each trial, your advisor will view the same dot " +
+            "display and independently decide which box contained " +
+            "more dots.</p>"
+        );
+
+    
+    const advisorIntroduction = {
+        type: "instructions",
+
+        pages: [
+            "<div class='dotTask-advisor-introduction'>" +
+
+                "<h1>Meet your advisor</h1>" +
+
+                "<img " +
+                    "class='dotTask-advisor-introduction-image' " +
+                    "src='" + assignedAdvisorImage + "' " +
+                    "alt='" + assignedAdvisor.label + "'>" +
+
+                "<h2>" + assignedAdvisor.label + "</h2>" +
+
+                advisorCoverStory +
+
+                "<p>Your response will not be shown to the advisor. " +
+                "After you submit your initial answer, you will see the " +
+                "advisor's answer for that trial.</p>" +
+
+                "<p>You may then keep your original answer or change it. " +
+                "Like any decision-maker, the advisor may sometimes be " +
+                "correct and sometimes incorrect.</p>" +
+
+                "<p>Before beginning, you will be asked to rate how much " +
+                "you currently trust this advisor.</p>" +
+
+                "<p>Press <strong>Next</strong> when you are ready.</p>" +
+
+            "</div>"
+        ],
+
+    show_clickable_nav: true,
+
+    on_load: () => {
+        gov.drawProgressBar();
+
+        document
+            .querySelector("#jspsych-content")
+            .classList.add(
+                "dotTask-wide-advisor-introduction"
+            );
+    },
+
+    on_finish: (trial) => {
+        document
+            .querySelector("#jspsych-content")
+            .classList.remove(
+                "dotTask-wide-advisor-introduction"
+            );
+
+            trial.measure = "advisorIntroduction";
+            trial.advisorCondition =
+                assignedAdvisor.condition;
+            trial.advisorType =
+                assignedAdvisor.type;
+
+            gov.storeMiscTrialData(trial);
+        }
+    };
+
+    const finalInstructions = {
+        type: 'instructions',
+        pages: ["<p>Excellent. You are now ready to do the experiment.</p>" +
+        "<p>Please make sure you are in a comfortable, quiet environment, and you are ready to begin.</p>"],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>gov.storeMiscTrialData(trial)
+    };
+
+    const blockBreak = {
+        type: 'instructions',
+        pages: ["<h1>Break</h1><p>You may take a moment to rest here. Press 'next' when you are ready.</p>"],
+        show_clickable_nav: true,
+        on_load: ()=>gov.drawProgressBar(),
+        on_finish: (trial)=>gov.storeMiscTrialData(trial)
+    };
+
+    function makeTrustRating(timepoint, blockNumber) {
+        const questionText =
+            timepoint === "before-task"
+                ? "Before beginning, how much do you trust your advisor?"
+                : "At this point, how much do you trust your advisor?";
+
+        return {
+            type: "canvas-sliders-response",
+
+            stimulus: () => null,
+            canvasHTML:
+                "<div id='trust-rating-stimulus'></div>",
+            canvasId: "trust-rating-stimulus",
+
+            prompt:
+                "<h2>" + questionText + "</h2>" +
+                "<p class='trust-rating-value'>" +
+                "Selected rating: " +
+                "<strong>" +
+                    "<span id='trust-rating-value'>50</span>" +
+                "</strong>" +
+            "</p>",
+
+        sliderCount: 1,
+        min: [0],
+        max: [100],
+        start: [50],
+        step: [1],
+
+        labels: [[
+            "0<br><small>Not at all</small>",
+            "50",
+            "100<br><small>Completely</small>"
+        ]],
+
+        slider_prompt: [
+            "Move the slider to indicate your answer."
+        ],
+
+        slider_name: ["advisorTrust"],
+        slider_full_width: [true],
+        slider_col_spacing: [0],
+        exclusive_group: [0],
+
+        // Prevent participants from submitting without moving the slider.
+        require_change: [1],
+        require_change_warning: [
+            "<span style='color: red;'>" +
+            "Please move the slider before continuing." +
+            "</span>"
+        ],
+
+        button_label: "Continue",
+
+        on_load: () => {
+            const slider = document.querySelector(
+                "#jspsych-canvas-sliders-response-slider0"
+            );
+
+            const valueLabel = document.querySelector(
+                 "#trust-rating-value"
+            );
+
+         // This class lets CSS target only the trust slider.
+        slider.classList.add("trust-rating-slider");
+
+        const updateDisplayedRating = () => {
+            valueLabel.textContent = slider.value;
+        };
+
+        slider.addEventListener(
+            "input",
+            updateDisplayedRating
+        );
+
+        updateDisplayedRating();
+        },
+
+        on_finish: (trial) => {
+            const trustRating =
+                Number(trial.response[0].answer);
+
+            const trustRecord = {
+                measure: "advisorTrust",
+                timepoint: timepoint,
+                blockNumber: blockNumber,
+                trustRating: trustRating,
+                advisorCondition:
+                    assignedAdvisor.condition,
+                advisorType:
+                    assignedAdvisor.type,
+                advisorReliability:
+                    assignedAdvisor.reliability,
+                rt: trial.rt
+            };
+
+            gov.trustRatings.push(trustRecord);
+
+            // Also identify this screen in the miscellaneous trial data.
+            trial.measure = "advisorTrust";
+            trial.timepoint = timepoint;
+            trial.blockNumber = blockNumber;
+            trial.trustRating = trustRating;
+            trial.advisorCondition =
+                assignedAdvisor.condition;
+
+            gov.storeMiscTrialData(trial);
+        }
+    };
+}
+
+    /* Initial response: present an initial stimulus and get a decision */
+    const introInitialDecision = {
+        type: "canvas-sliders-response",
+        stimulus: (canvasId)=>gov.drawDots(canvasId),
+        stimulus_duration: null,
+        prompt: '',
+        sliderCount: 1,
+        labels: [
+            ['Sure LEFT', '&nbsp;50%', 'Sure RIGHT']
+        ],
+        slider_prompt: [
+            'Which box has more dots?'
+        ],
+        slider_name: [
+            'answer'
+        ],
+        reversed: [false],
+        slider_full_width: [true],
+        slider_col_spacing: [0],
+        exclusive_group: [1],
+        require_change: [1],
+        canvasWidth: testCanvas.w,
+        canvasHeight: testCanvas.h,
+        on_load: ()=>gov.setSliderClick(),
+        check_response: (trialresponse)=>gov.checkResponse(trialresponse),
+        on_finish: (trial)=>gov.checkIntroResponse(trial)
+    };
+
+    /* Initial response: present an initial stimulus and get a decision */
+    const initialDecision = {
+        type: "canvas-sliders-response",
+        stimulus: (canvasId)=>gov.drawDots(canvasId),
+        stimulus_duration: gov.preTrialInterval + gov.preStimulusInterval + gov.stimulusDuration,
+        hideFunction: (canvasContainer)=>gov.maskDots(canvasContainer),
+        prompt: '',
+        sliderCount: 1,
+        slider_prompt: [
+            'Which box has more dots?'
+        ],
+        slider_name: [
+            'answer'
+        ],
+        reversed: [false],
+        slider_full_width: [true],
+        slider_col_spacing: [0],
+        exclusive_group: [1],
+        require_change: [1],
+        canvasWidth: testCanvas.w,
+        canvasHeight: testCanvas.h,
+        on_load: ()=>gov.setSliderClick(),
+        check_response: (trialresponse)=>gov.checkResponse(trialresponse),
+        on_finish: (trial)=>gov.initialResponse(trial, {
+            deferClose: gov.currentTrial.hasAdvisor
+        })
+    };
+
+    /* Match the reference task's 800 ms interval before advice appears. */
+    const advisorDelay = {
+        type: "html-keyboard-response",
+        stimulus: "",
+        choices: jsPsych.NO_KEYS,
+        trial_duration: 800,
+        on_load: ()=>{
+            gov.currentTrial.advisorDelayStart = performance.now();
+        },
+        on_finish: ()=>{
+            gov.currentTrial.advisorDelayEnd = performance.now();
+        }
+    };
+
+    /* Display an AI chat screenshot or the human-advisor placeholder. */
+    const advisorDisplay = {
+        type: "html-keyboard-response",
+        stimulus: ()=>{
+            const trial = gov.currentTrial;
+            const answer = trial.advisorAnswer === 0? "LEFT" : "RIGHT";
+
+            let advisorVisual;
+
+            if(trial.advisorType === "ai") {
+                advisorVisual = 
+                    "<img class='dotTask-ai-advisor-image' " +
+                    "src='../assets/image/chatgpt_logo.jpg'" + 
+                    "alt='ChatGPT'>"; 
+            }
+            else {
+                advisorVisual =
+                    "<img class='dotTask-human-advisor-image' " +
+                    "src='../assets/image/human_advisor.png' " +
+                    "alt='Human advisor'>";
+            }
+            const answerText =
+                "<h2 class='dotTask-advisor-answer'> I think the " +
+                answer.toLowerCase() + " box has more dots.</h2>";
+            
+
+            return "<div class='dotTask-advisor-display'>" +
+                "<h2>" + trial.advisorLabel + "</h2>" +
+                advisorVisual +
+                answerText +
+                "</div>";
+        },
+        choices: jsPsych.NO_KEYS,
+        trial_duration: 2500,
+        on_load: ()=>{
+            gov.currentTrial.advisorDisplayStart = performance.now();
+        },
+        on_finish: (trial)=>{
+            gov.currentTrial.advisorDisplayEnd = performance.now();
+            gov.storePluginData(trial);
+        }
+    };
+    /*Initial response marker*/
+    function showPreviousAnswerMarker() {
+        const slider = document.querySelector("#jspsych-canvas-sliders-response-slider0");
+        if(!slider)
+            return;
+        const initialAnswer = gov.currentTrial.answer[0];
+        const initialConfidence = gov.currentTrial.confidence[0];
+
+        if(
+            (initialAnswer !== 0 && initialAnswer !== 1) ||
+            !Number.isFinite(initialConfidence)
+        ) {return;}
+
+        const previousValue = initialAnswer === 0
+        ? 50 - initialConfidence
+        : 50 + initialConfidence;
+
+        const marker = document.createElement("div");
+        marker.className = "dotTask-previous-answer-marker";
+        marker.title = "Your initial answer";
+        marker.setAttribute("aria-label", "Your initial answer");
+
+        slider.parentElement.appendChild(marker);
+
+        const sliderBox = slider.getBoundingClientRect();
+        const parentBox = slider.parentElement.getBoundingClientRect();
+        const verticalInset = 2;
+        marker.style.top =
+            (sliderBox.top - parentBox.top + verticalInset) + "px";
+        marker.style.height =
+            (sliderBox.height - verticalInset * 2) + "px";
+
+        const minimum = Number(slider.min);
+        const maximum = Number(slider.max);
+        const proportion =
+            (previousValue - minimum) / (maximum - minimum);
+        const availableWidth = 
+            slider.clientWidth - marker.offsetWidth;
+
+        marker.style.left = proportion * availableWidth + "px";
+    }
+
+
+    /* Give the participant a second response after seeing the advice. */
+    const finalDecision = {
+        type: "canvas-sliders-response",
+        stimulus: ()=>{},
+        prompt: '',
+        sliderCount: 1,
+        slider_prompt: [
+            'After seeing the advice, which box had more dots?'
+        ],
+        slider_name: [
+            'answer'
+        ],
+        reversed: [false],
+        slider_full_width: [true],
+        slider_col_spacing: [0],
+        exclusive_group: [1],
+        require_change: [1],
+        canvasWidth: testCanvas.w,
+        canvasHeight: testCanvas.h,
+        on_load: ()=>{
+            gov.setSliderClick(); 
+            showPreviousAnswerMarker();
+        },
+        check_response: (trialresponse)=>gov.checkResponse(trialresponse),
+        on_finish: (trial)=>gov.finalResponse(trial)
+    };
+
+    /* Create the repetition list which will allow future trials to repeat stimuli from past trials */
+    const createRepList = {
+        type: "call-function",
+        func: ()=>gov.createRepetitionList()
+    };
+
+    /* Feedback shows a tick on the target box */
+    const feedbackDisplay = {
+        type: "canvas-sliders-response",
+        stimulus: (canvasId)=>{gov.showTrialFeedback(canvasId);},
+        prompt: '',
+        sliderCount: 0,
+        canvasWidth: testCanvas.w,
+        canvasHeight: testCanvas.h,
+        trial_duration: gov.feedbackDuration
+    };
+
+    // intro and practice
+    timeline.push(welcome);
+    timeline.push(introInitialDecision);
+    timeline.push(sliderInstructions);
+    timeline.push(introInitialDecision);
+    timeline.push(quickStimInstructions);
+    timeline.push({timeline: [initialDecision]});
+    timeline.push(practiceInstructions);
+    /*
+    * Introduce the participant's assigned advisor.
+     */
+    timeline.push(advisorIntroduction);
+
+    /*
+     * Measure initial trust before any practice or experimental
+     * experience with the advisor.
+     */
+    timeline.push(
+        makeTrustRating("before-task", 0)
+    );
+
+    for (let b=0; b<gov.practiceBlockStructure.length; b++) {
+
+        let reps = b===0?
+            utils.sumList(gov.practiceBlockStructure[b])-3 : utils.sumList(gov.practiceBlockStructure[b]);
+        timeline.push({
+            timeline: b === 0?
+                [initialDecision] :
+                [initialDecision, advisorDelay, advisorDisplay, finalDecision],
+            randomize_order: false,
+            repetitions: reps
+        });
+        timeline.push(blockBreak);
+    }
+    // Remove the last break screen
+    timeline.pop();
+
+    timeline.push(finalInstructions);
+
+    // real experiment
+    let repListSet = false;
+
+for(let b = 0; b < gov.blockStructure.length; b++) {
+    timeline.push({
+        timeline: [
+            initialDecision,
+            advisorDelay,
+            advisorDisplay,
+            finalDecision
+        ],
+        randomize_order: false,
+        repetitions: utils.sumList(
+            gov.blockStructure[b]
+        )
+    });
+
+    if(
+        !repListSet &&
+        gov.repeatTrials &&
+        utils.sumList(gov.blockStructure[b]) !==
+        utils.sumList(gov.blockStructure[b + 1])
+    ) {
+        timeline.push(createRepList);
+        repListSet = true;
+    }
+
+    // Trust rating after this block
+    timeline.push(
+        makeTrustRating(
+            "after-block-" + (b + 1),
+            b + 1
+        )
+    );
+
+    // Break after every block except the last one
+    if(b < gov.blockStructure.length - 1) {
+        timeline.push(blockBreak);
+    }
+}
+
+    /* start the experiment */
+    // browser check
+    if (!window.studyEntry.consent) {
+        document.querySelector('#initHeader').textContent = 'Please start from the study survey';
+        document.querySelector('#initText').textContent = 'Complete the consent page in Qualtrics and follow its link to this task. For a researcher test, open DotTask/?consent=true.';
+    } else if(bowser.a !== true) {
+        const h1 = document.querySelector('#initHeader');
+        h1.innerText = 'Outdated Browser';
+        document.querySelector('#initText').innerHTML = 'Your browser is an old version which does not meet the requirements for participating in this study. Please upgrade to the latest version of your browser.';
+       h1.parentElement.appendChild(document.createElement('p')).innerHTML = 'Instructions for how to do this can be found at <a href="https://browser-update.org/update.html">https://browser-update.org/update.html</a>.';
+    } else {
+        jsPsych.init({
+            timeline: timeline,
+            on_finish: ()=>gov.drawDebriefForm()
+        });
+    }
+
+</script>
+</body>
+</html>
